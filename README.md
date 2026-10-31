@@ -26,7 +26,7 @@
 [![Project Page](https://img.shields.io/badge/Project-Page-1f6feb?logo=githubpages&logoColor=white)](https://most-memory.github.io/)
 [![Paper](https://img.shields.io/badge/Paper-Coming_Soon-b31b1b?logo=arxiv&logoColor=white)](./)
 [![Data](https://img.shields.io/badge/Data-RoboCasa--Long-ffcc4d?logo=huggingface&logoColor=black)](https://huggingface.co/datasets/diqihe666/robocasa_long)
-[![Code](https://img.shields.io/badge/Code-RoboCasa--Long_Simulator-181717?logo=github&logoColor=white)](https://github.com/most-memory/RoboCasa-Long)
+[![Code](https://img.shields.io/badge/Code-RoboCasa--Long_Simulator-181717?logo=github&logoColor=white)](https://github.com/diqihe666/RoboCasa-Long)
 
 </div>
 
@@ -64,12 +64,11 @@ MOST is organized into two code repositories and one dataset release:
 | Component | Purpose | Link |
 | --- | --- | --- |
 | MOST policy code | Training, checkpoint export, deployment, and evaluation | This repository |
-| RoboCasa-Long simulator | Long-horizon task definitions and simulator environment construction | [RoboCasa-Long Simulator](https://github.com/most-memory/RoboCasa-Long) |
+| RoboCasa-Long simulator | Long-horizon task definitions and simulator environment construction | [RoboCasa-Long Simulator](https://github.com/diqihe666/RoboCasa-Long) |
 | RoboCasa-Long dataset | Demonstrations and memory annotations used by the Long benchmark | [Hugging Face Dataset](https://huggingface.co/datasets/diqihe666/robocasa_long) |
 
-The simulator repository is a planned release. Until it becomes public, use
-the standard RoboCasa environment for RoboCasa365 and refer to the
-RoboCasa-Long guide for the expected integration point.
+Install the shared RoboCasa environment below, then follow the benchmark guide
+for the additional dataset and simulator components required by each workflow.
 
 ## Repository layout
 
@@ -104,6 +103,9 @@ Create the environment used for training, checkpoint export, and model
 serving:
 
 ```bash
+git clone https://github.com/diqihe666/MOST.git
+cd MOST
+
 conda create -n most python=3.12 -y
 conda activate most
 
@@ -152,118 +154,95 @@ python -m robocasa.scripts.download_kitchen_assets
 pip install transformers==4.57.1 "imageio[ffmpeg]" tqdm scipy
 ```
 
-RoboCasa-Long evaluation additionally requires the task definitions from the
-separate [RoboCasa-Long simulator repository](https://github.com/most-memory/RoboCasa-Long)
-once that repository is public.
+Install the RoboCasa-Long task definitions from the separate
+[RoboCasa-Long simulator repository](https://github.com/diqihe666/RoboCasa-Long)
+before running Long evaluation.
 
-## 3. Common paths
+## 3. Initialize MOST from XR-1
 
-Set the compatible base model path before preparing or training either
-benchmark:
+MOST is post-trained from the
+[Xiaomi-Robotics-1 RoboCasa365 checkpoint](https://huggingface.co/XiaomiRobotics/Xiaomi-Robotics-1-RoboCasa365),
+referred to as XR-1 below. The release contains the pretrained model weights,
+custom Transformers code, tokenizer and processor files, and RoboCasa365
+action-normalization statistics. Both the RoboCasa365 and RoboCasa-Long
+training pipelines use this checkpoint as their initialization.
 
-```bash
-export MODEL_PATH=/path/to/compatible-robocasa365-base-model
-```
+### 3.1 Download the XR-1 checkpoint
 
-Dataset-specific `ROBOCASA_TARGET_ROOT` instructions are provided in the
-[RoboCasa365 guide](docs/robocasa365/README.md) and
-[RoboCasa-Long guide](docs/robocasa_long/README.md).
-
-## 4. Prepare the initialization checkpoint
-
-Convert the compatible Hugging Face base model into the Lightning/DeepSpeed
-initialization format:
+Install the Hugging Face CLI and download the complete repository snapshot:
 
 ```bash
 conda activate most
-export MODEL_PATH=/path/to/compatible-robocasa365-base-model
+pip install -U huggingface_hub
+
+export XR1_MODEL_ID=XiaomiRobotics/Xiaomi-Robotics-1-RoboCasa365
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
+
+hf download "$XR1_MODEL_ID" \
+  --local-dir "$MODEL_PATH"
+```
+
+`MODEL_PATH` must point to the downloaded Hugging Face model directory, not to
+an individual `.safetensors` file. Confirm that the model and processor files
+are present:
+
+```bash
+test -f "$MODEL_PATH/config.json"
+test -f "$MODEL_PATH/processor_config.json"
+```
+
+### 3.2 Convert XR-1 for MOST training
+
+The MOST trainer uses a Lightning/DeepSpeed initialization file rather than
+loading the Hugging Face shards directly. Convert the downloaded XR-1 model:
+
+```bash
+conda activate most
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
 
 bash scripts/prepare_robocasa365_target.sh
+```
 
+The conversion produces:
+
+```text
+pretrained_ckpt/robocasa365/model_states.pt
+pretrained_ckpt/robocasa365/vlm_config/config.json
+```
+
+Export their locations before training:
+
+```bash
 export MOST_PRETRAINED_CKPT="$PWD/pretrained_ckpt/robocasa365/model_states.pt"
 export MOST_VLM_CONFIG_PATH="$PWD/pretrained_ckpt/robocasa365/vlm_config"
 ```
 
-## 5. Export a checkpoint
+`MOST_PRETRAINED_CKPT` initializes the MOST policy from the converted XR-1
+weights. `MOST_VLM_CONFIG_PATH` supplies the exact nested Qwen3-VL architecture
+configuration used by XR-1. Keep `MODEL_PATH` exported as well: the data
+pipeline loads the XR-1 processor and action statistics from that directory.
 
-Set the compatible base model, training checkpoint, and destination:
+The benchmark launchers use these default output paths automatically, but the
+explicit variables make custom locations and cluster jobs easier to audit.
+Dataset-specific `ROBOCASA_TARGET_ROOT` instructions are provided in the
+[RoboCasa365 guide](docs/robocasa365/README.md) and
+[RoboCasa-Long guide](docs/robocasa_long/README.md).
 
-```bash
-conda activate most
+## Next steps
 
-BASE_MODEL=/path/to/compatible-robocasa365-base-model
-CHECKPOINT=/path/to/epoch=0-step=60000.ckpt
-EXPORT_DIR="$PWD/exports/most-step60000"
+The common installation and XR-1 initialization are now complete. Continue
+with one benchmark guide; each guide contains its complete data download,
+training, checkpoint export, model-server, and evaluation workflow:
 
-python tools/export_hf_checkpoint.py \
-  --base-model "$BASE_MODEL" \
-  --checkpoint "$CHECKPOINT" \
-  --output-dir "$EXPORT_DIR"
-```
-
-The exporter performs a strict load after removing training-only choice heads,
-writes the memory contract into `config.json`, and copies the remote code
-required by `AutoModel.from_pretrained(..., trust_remote_code=True)`.
-
-RoboCasa-Long checkpoints trained with `absolute_rotvec` require the wrapper
-described in the [RoboCasa-Long guide](docs/robocasa_long/README.md).
-
-## 6. Start inference servers
-
-Start eight model-server processes on ports `10086` through `10093`:
-
-```bash
-conda activate most
-export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
-
-BASE_PORT=10086 \
-SESSION_NAME=most-servers \
-CONDA_ENV=most \
-bash scripts/deploy.sh "$EXPORT_DIR" 8 8
-```
-
-Inspect the servers with:
-
-```bash
-tmux attach -t most-servers
-```
-
-Detach without stopping them with `Ctrl+B`, then `D`. Use a unique
-`SESSION_NAME` for each checkpoint.
-
-## 7. Results and logs
-
-Both evaluators use the same result layout:
-
-```text
-<log_path>/<RUN_ID>/summary.json
-<log_path>/<RUN_ID>/<TaskName>/stats.json
-<log_path>/scheduler/<RUN_ID>/logs/worker-*.log
-<log_path>/scheduler/<RUN_ID>/errors/
-```
-
-If a client reports a socket disconnect, inspect the matching model-server
-`tmux` window first; the server traceback normally contains the root cause.
-
-## 8. Tests
-
-```bash
-conda activate most
-pip install -r requirements-dev.txt
-ruff check .
-ruff format --check .
-pytest -q
-```
-
-Dataset integration tests require the dependencies in `requirements.txt`.
-Simulator rollouts additionally require the separate RoboCasa environment.
+- [RoboCasa365: Data, Training, and Evaluation](docs/robocasa365/README.md)
+- [RoboCasa-Long: Data, Training, and Evaluation](docs/robocasa_long/README.md)
 
 ## To-Do List
 
 - [x] Release RoboCasa365 training and evaluation code
 - [x] Release RoboCasa-Long training and evaluation pipeline
+- [x] Release the RoboCasa-Long simulation environment code
 - [ ] Release pretrained MOST checkpoints
-- [ ] Release the RoboCasa-Long simulation environment code
 
 ## Acknowledgements
 

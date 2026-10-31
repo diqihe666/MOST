@@ -2,38 +2,45 @@
 
 [Back to the main README](../../README.md)
 
-This guide covers the RoboCasa-Long dataset, MOST training, Long-specific
-checkpoint export, simulator integration, and distributed evaluation. Install
-the policy and shared RoboCasa environments from the
-[main README](../../README.md) before continuing.
+This guide starts after the common installation and XR-1 initialization in the
+[main README](../../README.md). Follow the sections in order to install the
+Long simulator tasks, download the dataset, train MOST, export a checkpoint,
+start model servers, and run RoboCasa-Long evaluation.
 
-RoboCasa-Long training in this repository uses only Long data. It does not
-construct or read a RoboCasa365 Composite dataset.
+Run every command from the root of the cloned MOST repository unless stated
+otherwise. RoboCasa-Long training uses only Long data and never constructs or
+reads a RoboCasa365 Composite dataset.
 
-## Components
+## 1. Install the RoboCasa-Long simulator tasks
 
-| Component | Link |
-| --- | --- |
-| Dataset | [diqihe666/robocasa_long](https://huggingface.co/datasets/diqihe666/robocasa_long) |
-| Simulator task code | [most-memory/RoboCasa-Long](https://github.com/most-memory/RoboCasa-Long) |
+The common RoboCasa and RoboSuite environment is created in the main README.
+Install the separate RoboCasa-Long task package into that environment:
 
-The simulator repository is a planned release and is not required for policy
-training from the released offline dataset. It is required for simulator
-evaluation once public.
+```bash
+cd /path/to/MOST
+conda activate robocasa
 
-## Dataset download
+git clone https://github.com/diqihe666/RoboCasa-Long.git \
+  third_party/robocasa-long
+pip install -e third_party/robocasa-long
+```
 
-Install the Hugging Face CLI in the policy environment:
+The package registers the Long task definitions used by the evaluation
+launcher. Keep the checkout at `third_party/robocasa-long` unless its own
+README instructs you to install additional assets at another location.
+
+## 2. Download the RoboCasa-Long dataset
+
+The training data and memory annotations are released at
+[diqihe666/robocasa_long](https://huggingface.co/datasets/diqihe666/robocasa_long).
+
+Install the Hugging Face CLI in the policy environment and download the data
+into the `long/` group expected by the loader:
 
 ```bash
 conda activate most
 pip install -U huggingface_hub
-```
 
-Download the released dataset into the `long/` group expected by the training
-loader:
-
-```bash
 export ROBOCASA_TARGET_ROOT=/path/to/most-data
 mkdir -p "$ROBOCASA_TARGET_ROOT/long"
 
@@ -42,7 +49,7 @@ hf download diqihe666/robocasa_long \
   --local-dir "$ROBOCASA_TARGET_ROOT/long"
 ```
 
-The resulting layout must place each task directly below `long/`:
+The task directories must be directly below `long/`:
 
 ```text
 $ROBOCASA_TARGET_ROOT/
@@ -57,35 +64,53 @@ $ROBOCASA_TARGET_ROOT/
 ```
 
 Each task contains episode Parquet files, three synchronized camera videos,
-metadata, and memory labels such as:
+metadata, and per-episode memory labels:
 
 ```text
 <task-directory>/labels/episode_000000.json
 ```
 
-If a downloaded snapshot contains an additional wrapper directory, move or
-link the task directories so they match the layout above before training.
+If the downloaded snapshot contains an additional wrapper directory, move or
+link the task directories so they match the layout above.
 
-## Required paths
+## 3. Verify the policy initialization
 
-Prepare the common initialization checkpoint as described in the main README,
-then export:
+Activate the policy environment and verify the files prepared in the main
+README:
 
 ```bash
-export MODEL_PATH=/path/to/compatible-robocasa365-base-model
-export ROBOCASA_TARGET_ROOT=/path/to/most-data
+cd /path/to/MOST
+conda activate most
+
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
 export MOST_PRETRAINED_CKPT="$PWD/pretrained_ckpt/robocasa365/model_states.pt"
 export MOST_VLM_CONFIG_PATH="$PWD/pretrained_ckpt/robocasa365/vlm_config"
 export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
 export MOST_MEM_DINO_CKPT="$PWD/third_party/dinov2/dinov2_vits14_pretrain.pth"
+
+test -f "$MODEL_PATH/config.json"
+test -f "$MOST_PRETRAINED_CKPT"
+test -f "$MOST_VLM_CONFIG_PATH/config.json"
+test -f "$MOST_MEM_DINO_CKPT"
+test -d "$ROBOCASA_TARGET_ROOT/long/PackFruit"
 ```
 
-## Training
+Keep these variables exported in every terminal used for training or
+checkpoint export.
+
+## 4. Train MOST on RoboCasa-Long
 
 Example: train on `PackFruit` for 20,000 steps with eight GPUs:
 
 ```bash
 conda activate most
+
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
+export ROBOCASA_TARGET_ROOT=/path/to/most-data
+export MOST_PRETRAINED_CKPT="$PWD/pretrained_ckpt/robocasa365/model_states.pt"
+export MOST_VLM_CONFIG_PATH="$PWD/pretrained_ckpt/robocasa365/vlm_config"
+export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
+export MOST_MEM_DINO_CKPT="$PWD/third_party/dinov2/dinov2_vits14_pretrain.pth"
 
 LONG_TASKS=PackFruit \
 LONG_EPISODES_PER_BATCH=2 \
@@ -103,70 +128,110 @@ divide `BATCH_SIZE`; `2` is the recommended starting point. Samples in a local
 batch are grouped by episode and `frame_index % memory_stride` so their sparse
 memory histories can share decoding work.
 
-Resume from a full Lightning/DeepSpeed checkpoint directory:
+Training writes checkpoints, the resolved configuration, and logs to:
+
+```text
+outputs/most-long-packfruit-e2-20k/
+logs/most-long-packfruit-e2-20k.log
+```
+
+To resume the same run, pass the full Lightning/DeepSpeed checkpoint directory:
 
 ```bash
-RESUME_CKPT=/path/to/epoch=0-step=10000.ckpt \
+RESUME_CKPT="$PWD/outputs/most-long-packfruit-e2-20k/epoch=0-step=10000.ckpt" \
 RUN_NAME=most-long-packfruit-e2-20k \
 bash scripts/train_robocasa_long.sh
 ```
 
-### Absolute-rotation training
+### Absolute-rotation option
 
-The default action representation is `delta`. To use the supported absolute
-rotation-vector representation:
+The default action representation is `delta`. To train with the supported
+absolute rotation-vector representation:
 
 ```bash
 LONG_ROTATION_ACTION_MODE=absolute_rotvec \
+RUN_NAME=most-long-packfruit-absrot-e2-20k \
 bash scripts/train_robocasa_long.sh
 ```
 
 The launcher computes and stores the required rotation statistics in the run
 directory.
 
-## Checkpoint export
+## 5. Export the trained checkpoint
 
-For a standard `delta` checkpoint, use the common exporter documented in the
-[main README](../../README.md#5-export-a-checkpoint).
+### Delta-action checkpoint
 
-For a checkpoint trained with `absolute_rotvec`, use:
+For the default `delta` representation:
 
 ```bash
-BASE_MODEL=/path/to/compatible-robocasa365-base-model
-CHECKPOINT=/path/to/epoch=0-step=20000.ckpt
-EXPORT_DIR="$PWD/exports/most-long-step20000"
+conda activate most
+
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
+CHECKPOINT="$PWD/outputs/most-long-packfruit-e2-20k/epoch=0-step=20000.ckpt"
+EXPORT_DIR="$PWD/exports/most-long-packfruit-e2-step20000"
+
+python tools/export_hf_checkpoint.py \
+  --base-model "$MODEL_PATH" \
+  --checkpoint "$CHECKPOINT" \
+  --output-dir "$EXPORT_DIR"
+```
+
+### Absolute-rotation checkpoint
+
+For a run trained with `LONG_ROTATION_ACTION_MODE=absolute_rotvec`:
+
+```bash
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
+CHECKPOINT="$PWD/outputs/most-long-packfruit-absrot-e2-20k/epoch=0-step=20000.ckpt"
+STATS="$PWD/outputs/most-long-packfruit-absrot-e2-20k/robocasa_long_absrot_stats.json"
+EXPORT_DIR="$PWD/exports/most-long-packfruit-absrot-e2-step20000"
 
 python tools/export_hf_checkpoint_robocasa_long.py \
-  --base-model "$BASE_MODEL" \
+  --base-model "$MODEL_PATH" \
   --checkpoint "$CHECKPOINT" \
   --output-dir "$EXPORT_DIR" \
-  --stats /path/to/robocasa_long_absrot_stats.json
+  --stats "$STATS"
 ```
 
-## Simulator environment
-
-Start with the shared RoboCasa environment from the
-[main README](../../README.md#2-shared-robocasa-simulator-environment). When
-the RoboCasa-Long simulator repository is public, install its Long task
-definitions into that environment:
+Verify the exported model contract:
 
 ```bash
-conda activate robocasa
-git clone https://github.com/most-memory/RoboCasa-Long.git third_party/robocasa-long
-pip install -e third_party/robocasa-long
+test -f "$EXPORT_DIR/config.json"
+grep -E '"memory_enabled"|"memory_interface"|"memory_stride"' \
+  "$EXPORT_DIR/config.json"
 ```
 
-The installed package must register the selected Long tasks with RoboCasa
-before evaluation starts.
+## 6. Start the model servers
 
-## Evaluation
-
-Start the model servers as described in the main README before launching the
-simulator workers.
-
-Smoke test `PackFruit` with three episodes:
+Start eight model-server processes on ports `10086` through `10093`:
 
 ```bash
+conda activate most
+export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
+
+BASE_PORT=10086 \
+SESSION_NAME=most-long-packfruit \
+CONDA_ENV=most \
+bash scripts/deploy.sh "$EXPORT_DIR" 8 8
+```
+
+Inspect the server session:
+
+```bash
+tmux attach -t most-long-packfruit
+```
+
+Detach without stopping the servers with `Ctrl+B`, then `D`.
+
+## 7. Run RoboCasa-Long evaluation
+
+Leave the model servers running. Open another terminal at the MOST repository
+root. The launcher activates the `robocasa` environment through `CONDA_ENV`.
+
+First run a three-episode `PackFruit` smoke test:
+
+```bash
+EXPORT_DIR="$PWD/exports/most-long-packfruit-e2-step20000"
 RUN_ID="long-smoke-$(date +%Y%m%d-%H%M%S)"
 
 BASE_PORT=10086 \
@@ -182,9 +247,10 @@ bash scripts/launch_robocasa_long.sh \
   --save-videos
 ```
 
-Run 30 episodes with eight workers:
+After the smoke test succeeds, run 30 episodes with eight workers:
 
 ```bash
+EXPORT_DIR="$PWD/exports/most-long-packfruit-e2-step20000"
 RUN_ID="long-packfruit-$(date +%Y%m%d-%H%M%S)"
 
 BASE_PORT=10086 \
@@ -203,5 +269,14 @@ bash scripts/launch_robocasa_long.sh \
 Without `LONG_TASKS`, the launcher evaluates the default tasks:
 `PackTwoLunches`, `PrepareBreakfast`, and `CleanAndStoreAfterMeal`.
 
-See the [main README](../../README.md#7-results-and-logs) for the shared result
-layout and troubleshooting notes.
+The merged summary is written to:
+
+```text
+eval_results/long-packfruit/<RUN_ID>/summary.json
+```
+
+When evaluation is complete, stop the model servers:
+
+```bash
+tmux kill-session -t most-long-packfruit
+```

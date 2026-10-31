@@ -2,16 +2,52 @@
 
 [Back to the main README](../../README.md)
 
-This guide covers RoboCasa365 data preparation, MOST training, and distributed
-evaluation. Install the policy and simulator environments from the
-[main README](../../README.md) before continuing.
+This guide starts after the common installation and XR-1 initialization in the
+[main README](../../README.md). Follow the sections in order to prepare data,
+train MOST, export a checkpoint, start model servers, and run RoboCasa365
+evaluation.
 
-## Data
+Run every command from the root of the cloned MOST repository unless stated
+otherwise.
+
+## 1. Verify the common setup
+
+Activate the policy environment and verify the shared files prepared in the
+main README:
+
+```bash
+cd /path/to/MOST
+conda activate most
+
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
+export MOST_PRETRAINED_CKPT="$PWD/pretrained_ckpt/robocasa365/model_states.pt"
+export MOST_VLM_CONFIG_PATH="$PWD/pretrained_ckpt/robocasa365/vlm_config"
+export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
+export MOST_MEM_DINO_CKPT="$PWD/third_party/dinov2/dinov2_vits14_pretrain.pth"
+
+test -f "$MODEL_PATH/config.json"
+test -f "$MOST_PRETRAINED_CKPT"
+test -f "$MOST_VLM_CONFIG_PATH/config.json"
+test -f "$MOST_MEM_DINO_CKPT"
+```
+
+Keep these variables exported in every terminal used for training or
+checkpoint export.
+
+## 2. Prepare RoboCasa365 data
 
 Download and prepare RoboCasa365 by following the
-[official RoboCasa dataset documentation](https://github.com/robocasa/robocasa/blob/main/docs/datasets/using_datasets.md).
-MOST uses the standard LeRobot episode layout and expects the selected task
-directories under one root:
+[official RoboCasa dataset guide](https://github.com/robocasa/robocasa/blob/main/docs/datasets/using_datasets.md).
+The official guide is the source of truth for dataset download options,
+available task splits, and RoboCasa-specific assets.
+
+After preparation, set one root containing the task groups used by MOST:
+
+```bash
+export ROBOCASA_TARGET_ROOT=/path/to/robocasa365-data
+```
+
+The relevant layout is:
 
 ```text
 $ROBOCASA_TARGET_ROOT/
@@ -19,49 +55,36 @@ $ROBOCASA_TARGET_ROOT/
   composite/<TaskName>/
 ```
 
-Each task directory contains episode Parquet files, three synchronized camera
-videos, metadata, and memory-supervision labels. Target subsets are selected
-with `meta/target10.txt` or `meta/target100.txt`. Memory-enabled training
-expects one label file per episode:
+Each selected task directory must contain episode Parquet files, three camera
+videos, metadata, target selectors, and memory labels:
 
 ```text
-<task-directory>/labels/episode_000000.json
+<task-directory>/
+  data/chunk-000/episode_000000.parquet
+  videos/chunk-000/<camera-key>/episode_000000.mp4
+  meta/target10.txt
+  meta/target100.txt
+  labels/episode_000000.json
 ```
 
-Set the dataset root:
-
-```bash
-export ROBOCASA_TARGET_ROOT=/path/to/robocasa-target-data
-```
-
-Validate a subset before starting a long run:
+Validate a small subset before training. This example checks at most two
+target10 episodes from `DeliverStraw`:
 
 ```bash
 python tools/validate_robocasa365_target.py \
   --data-root "$ROBOCASA_TARGET_ROOT" \
   --split composite_seen \
-  --episode-ids-file meta/target10.txt
+  --tasks DeliverStraw \
+  --episode-ids-file meta/target10.txt \
+  --max-episodes-per-task 2
 ```
 
-Replace `meta/target10.txt` with `meta/target100.txt` for the target100 split.
+Do not continue until the validator finishes without errors.
 
-## Required paths
+## 3. Train MOST on RoboCasa365
 
-Prepare the common initialization checkpoint as described in the main README,
-then export the following variables:
-
-```bash
-export MODEL_PATH=/path/to/compatible-robocasa365-base-model
-export ROBOCASA_TARGET_ROOT=/path/to/robocasa-target-data
-export MOST_PRETRAINED_CKPT="$PWD/pretrained_ckpt/robocasa365/model_states.pt"
-export MOST_VLM_CONFIG_PATH="$PWD/pretrained_ckpt/robocasa365/vlm_config"
-export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
-export MOST_MEM_DINO_CKPT="$PWD/third_party/dinov2/dinov2_vits14_pretrain.pth"
-```
-
-## Training
-
-The launcher accepts one target fraction and one task split:
+The launcher accepts a target fraction, a task split, the maximum number of
+training steps, and the number of local GPUs:
 
 ```bash
 bash scripts/train_robocasa365_target.sh \
@@ -70,10 +93,17 @@ bash scripts/train_robocasa365_target.sh \
   [max_steps] [num_gpus]
 ```
 
-Example: target10 composite-seen, 60,000 steps, eight GPUs:
+Example: train target10 composite-seen for 60,000 steps on eight GPUs:
 
 ```bash
 conda activate most
+
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
+export ROBOCASA_TARGET_ROOT=/path/to/robocasa365-data
+export MOST_PRETRAINED_CKPT="$PWD/pretrained_ckpt/robocasa365/model_states.pt"
+export MOST_VLM_CONFIG_PATH="$PWD/pretrained_ckpt/robocasa365/vlm_config"
+export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
+export MOST_MEM_DINO_CKPT="$PWD/third_party/dinov2/dinov2_vits14_pretrain.pth"
 
 RUN_NAME=most-target10-composite-seen \
 BATCH_SIZE=16 \
@@ -84,31 +114,82 @@ bash scripts/train_robocasa365_target.sh \
   target10 composite_seen 60000 8
 ```
 
-Checkpoints are written to `outputs/<RUN_NAME>/`. Resume from a full
-Lightning/DeepSpeed checkpoint directory with:
+Training writes checkpoints and the resolved configuration to:
+
+```text
+outputs/most-target10-composite-seen/
+```
+
+To resume the same run, pass the full Lightning/DeepSpeed checkpoint directory:
 
 ```bash
-RESUME_CKPT=/path/to/epoch=0-step=20000.ckpt \
+RESUME_CKPT="$PWD/outputs/most-target10-composite-seen/epoch=0-step=20000.ckpt" \
 RUN_NAME=most-target10-composite-seen \
 bash scripts/train_robocasa365_target.sh \
   target10 composite_seen 60000 8
 ```
 
-## Checkpoint export and model servers
+## 4. Export the trained checkpoint
 
-Export the trained checkpoint and start the inference servers by following
-Sections 5 and 6 of the [main README](../../README.md). Use the resulting
-Hugging Face directory as `EXPORT_DIR` below.
-
-## Evaluation
-
-Start the model servers first, then activate the simulator environment in a
-second terminal.
-
-Smoke test one task with two episodes:
+Select the checkpoint created by training. Replace the example step number if
+you want to export a different checkpoint:
 
 ```bash
-RUN_ID="smoke-$(date +%Y%m%d-%H%M%S)"
+conda activate most
+
+export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
+CHECKPOINT="$PWD/outputs/most-target10-composite-seen/epoch=0-step=60000.ckpt"
+EXPORT_DIR="$PWD/exports/most-target10-composite-seen-step60000"
+
+python tools/export_hf_checkpoint.py \
+  --base-model "$MODEL_PATH" \
+  --checkpoint "$CHECKPOINT" \
+  --output-dir "$EXPORT_DIR"
+```
+
+Verify the exported model contract:
+
+```bash
+test -f "$EXPORT_DIR/config.json"
+grep -E '"memory_enabled"|"memory_interface"|"memory_stride"' \
+  "$EXPORT_DIR/config.json"
+```
+
+The exported directory is the model path used by both the inference servers
+and the evaluation clients.
+
+## 5. Start the model servers
+
+Start eight model-server processes on ports `10086` through `10093`:
+
+```bash
+conda activate most
+export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
+
+BASE_PORT=10086 \
+SESSION_NAME=most-r365-t10-cs \
+CONDA_ENV=most \
+bash scripts/deploy.sh "$EXPORT_DIR" 8 8
+```
+
+Inspect the server session:
+
+```bash
+tmux attach -t most-r365-t10-cs
+```
+
+Detach without stopping the servers with `Ctrl+B`, then `D`.
+
+## 6. Run RoboCasa365 evaluation
+
+Leave the model servers running. Open another terminal at the MOST repository
+root. The launcher activates the `robocasa` environment through `CONDA_ENV`.
+
+First run a two-episode smoke test on one task:
+
+```bash
+EXPORT_DIR="$PWD/exports/most-target10-composite-seen-step60000"
+RUN_ID="r365-smoke-$(date +%Y%m%d-%H%M%S)"
 
 BASE_PORT=10086 \
 TASK_SET=composite_seen \
@@ -116,18 +197,21 @@ SPLIT=target \
 NUM_TRIALS=2 \
 CONDA_ENV=robocasa \
 RUN_ID="$RUN_ID" \
+SEED=7 \
 bash scripts/launch_robocasa365.sh \
   1 \
   eval_results/robocasa365-smoke \
   "$EXPORT_DIR" \
-  --task-name DeliverStraw
+  --task-name DeliverStraw \
+  --save-videos
 ```
 
-Run the full composite-seen evaluation with eight workers and 30 episodes per
-task:
+After the smoke test succeeds, run the full composite-seen evaluation with
+eight workers and 30 episodes per task:
 
 ```bash
-RUN_ID="most-t10-cs-$(date +%Y%m%d-%H%M%S)"
+EXPORT_DIR="$PWD/exports/most-target10-composite-seen-step60000"
+RUN_ID="r365-t10-cs-$(date +%Y%m%d-%H%M%S)"
 
 BASE_PORT=10086 \
 TASK_SET=composite_seen \
@@ -139,8 +223,18 @@ SEED=7 \
 bash scripts/launch_robocasa365.sh \
   8 \
   eval_results/most-t10-cs \
-  "$EXPORT_DIR"
+  "$EXPORT_DIR" \
+  --save-videos
 ```
 
-See the [main README](../../README.md#7-results-and-logs) for the shared result
-layout and troubleshooting notes.
+The merged summary is written to:
+
+```text
+eval_results/most-t10-cs/<RUN_ID>/summary.json
+```
+
+When evaluation is complete, stop the model servers:
+
+```bash
+tmux kill-session -t most-r365-t10-cs
+```
