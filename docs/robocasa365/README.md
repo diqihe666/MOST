@@ -2,18 +2,39 @@
 
 [Back to the main README](../../README.md)
 
-This guide starts after the common installation and XR-1 initialization in the
-[main README](../../README.md). Follow the sections in order to prepare data,
-train MOST, export a checkpoint, start model servers, and run RoboCasa365
-evaluation.
+This guide starts after the common MOST RoboCasa installation and XR-1
+initialization in the [main README](../../README.md). Follow the sections in
+order to verify the simulator metrics, prepare data, train MOST, export a
+checkpoint, start model servers, and run RoboCasa365 evaluation.
 
 Run every command from the root of the cloned MOST repository unless stated
 otherwise.
 
 ## 1. Verify the common setup
 
-Activate the policy environment and verify the shared files prepared in the
-main README:
+RoboCasa365 evaluation must use the
+[MOST RoboCasa environment](https://github.com/diqihe666/Robocasa-Long), not
+an unmodified upstream RoboCasa installation. The fork supplies the semantic
+progress curves and long-horizon metrics consumed by the evaluator for all 32
+Composite Seen and Composite Unseen tasks.
+
+First activate the simulator environment and verify the imported package and
+all metric interfaces:
+
+```bash
+cd /path/to/MOST-vla
+conda activate robocasa
+
+python -c "import robocasa; print(robocasa.__file__)"
+python third_party/robocasa-most/tests/test_gym_long_metrics.py
+```
+
+The package path must point into `third_party/robocasa-most/robocasa`, and the
+test must finish with `Passed: 35/35`. Resolve any other imported RoboCasa copy
+before running evaluation.
+
+Next activate the policy environment and verify the shared files prepared in
+the main README:
 
 ```bash
 cd /path/to/MOST

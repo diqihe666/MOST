@@ -26,7 +26,7 @@
 [![Project Page](https://img.shields.io/badge/Project-Page-1f6feb?logo=githubpages&logoColor=white)](https://most-vla.github.io/)
 [![Paper](https://img.shields.io/badge/Paper-Coming_Soon-b31b1b?logo=arxiv&logoColor=white)](./)
 [![Data](https://img.shields.io/badge/Data-RoboCasa--Long-ffcc4d?logo=huggingface&logoColor=black)](https://huggingface.co/datasets/diqihe666/robocasa_long)
-[![Simulator](https://img.shields.io/badge/Simulator-RoboCasa--Long-181717?logo=github&logoColor=white)](https://github.com/diqihe666/Robocasa-Long)
+[![Simulator](https://img.shields.io/badge/Simulator-MOST--RoboCasa-181717?logo=github&logoColor=white)](https://github.com/diqihe666/Robocasa-Long)
 
 </div>
 
@@ -44,8 +44,8 @@ continuous action generation without an external planner or retrieval stage.
 
 This repository provides the policy training, checkpoint conversion,
 deployment, and evaluation code for **RoboCasa365** and **RoboCasa-Long**.
-RoboCasa-Long data and simulator construction are maintained as separate
-release components.
+The unified simulator and metric implementation, together with the
+RoboCasa-Long data, are maintained as separate release components.
 
 ## Documentation
 
@@ -64,11 +64,12 @@ MOST is organized into two code repositories and one dataset release:
 | Component | Purpose | Link |
 | --- | --- | --- |
 | MOST policy code | Training, checkpoint export, deployment, and evaluation | This repository |
-| RoboCasa-Long simulator | Long-horizon task definitions and simulator environment construction | [RoboCasa-Long Simulator](https://github.com/diqihe666/Robocasa-Long) |
+| MOST RoboCasa environment | Unified RoboCasa365 metrics, RoboCasa-Long tasks, and simulator environment | [MOST RoboCasa Environment](https://github.com/diqihe666/Robocasa-Long) |
 | RoboCasa-Long dataset | Demonstrations and memory annotations used by the Long benchmark | [Hugging Face Dataset](https://huggingface.co/datasets/diqihe666/robocasa_long) |
 
-Install the shared RoboCasa environment below, then follow the benchmark guide
-for the additional dataset and simulator components required by each workflow.
+Both benchmark evaluators require the MOST RoboCasa environment below. Install
+it once, then follow the benchmark-specific data, training, and inference
+guide.
 
 ## Repository layout
 
@@ -133,13 +134,17 @@ export MOST_MEM_DINO_REPO="$PWD/third_party/dinov2"
 export MOST_MEM_DINO_CKPT="$PWD/third_party/dinov2/dinov2_vits14_pretrain.pth"
 ```
 
-## 2. Shared RoboCasa simulator environment
+## 2. Shared MOST RoboCasa environment
 
-RoboCasa365 and RoboCasa-Long evaluations share the same RoboSuite environment.
-The RoboCasa-Long repository is a complete RoboCasa fork: it retains the
-upstream RoboCasa365 environments and adds the three Long tasks. Keep this
-simulator environment separate from the policy environment because the
-simulator and model server have different dependency requirements.
+RoboCasa365 and RoboCasa-Long evaluations both require the
+[MOST RoboCasa environment](https://github.com/diqihe666/Robocasa-Long).
+This complete RoboCasa fork preserves the upstream environments, adds semantic
+progress metrics to 32 RoboCasa365 Composite tasks, and adds the three
+RoboCasa-Long tasks. The MOST evaluators consume these metrics directly, so do
+not substitute an unmodified upstream RoboCasa installation.
+
+Keep the simulator environment separate from the policy environment because
+the simulator and model server have different dependency requirements.
 
 ```bash
 conda create -c conda-forge -n robocasa python=3.11 -y
@@ -149,16 +154,30 @@ git clone https://github.com/ARISE-Initiative/robosuite.git third_party/robosuit
 pip install -e third_party/robosuite
 
 git clone https://github.com/diqihe666/Robocasa-Long.git \
-  third_party/robocasa-long
-pip install -e third_party/robocasa-long
+  third_party/robocasa-most
+pip install -e third_party/robocasa-most
 python -m robocasa.scripts.setup_macros
 python -m robocasa.scripts.download_kitchen_assets
 
 pip install transformers==4.57.1 "imageio[ffmpeg]" tqdm scipy
 ```
 
-See the [RoboCasa-Long simulator repository](https://github.com/diqihe666/Robocasa-Long)
-for task descriptions and the three-environment startup test.
+Confirm that Python resolves this fork rather than another RoboCasa checkout:
+
+```bash
+python -c "import robocasa; print(robocasa.__file__)"
+```
+
+The printed path must be inside `third_party/robocasa-most/robocasa`. Then run
+the complete environment and metric-interface check:
+
+```bash
+python third_party/robocasa-most/tests/test_gym_long_metrics.py
+```
+
+A successful run reports `Passed: 35/35`. See the
+[MOST RoboCasa environment repository](https://github.com/diqihe666/Robocasa-Long)
+for the supported task list and metric definitions.
 
 ## 3. Initialize MOST from XR-1
 
