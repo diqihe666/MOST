@@ -1,0 +1,46 @@
+# @package _global_
+
+data:
+  type: RoboCasaLongDataModule
+  params:
+    max_steps: ${trainer.max_steps}
+    train_datasets:
+      data_root: ${oc.env:ROBOCASA_TARGET_ROOT}
+      long_tasks:
+        - PackTwoLunches
+        - PrepareBreakfast
+        - CleanAndStoreAfterMeal
+
+      # delta preserves the RoboCasa365 action contract. absolute_rotvec uses
+      # a reference-centered absolute end-effector rotation for Long tasks.
+      rotation_action_mode: delta
+      long_action_stats_path: null
+      long_robot_type: robocasa_long_absrot
+
+      # Each local batch is divided evenly across this many Long episodes.
+      # A value of 2 with batch_size=16 yields two aligned eight-frame chunks.
+      long_episodes_per_batch: 2
+
+      processor_path: ${oc.env:MODEL_PATH}
+      robot_type: robocasa365
+      use_checkpoint_processor: true
+      prompt_mode: training
+      action_length: 16
+      obs_history: 4
+      obs_interval: 2
+      source_video_fps: ${oc.env:ROBOCASA_LONG_SOURCE_FPS,20.0}
+      crop_ratio: 0.95
+      augment: true
+      strict: true
+
+      memory_dedup_past: false
+      video_reader_cache_size: 3
+      episode_cache_size: 4
+      raw_frame_cache_size: 768
+      batch_decode_prewarm: true
+      batch_size: 16
+      num_workers: 8
+      prefetch_factor: 2
+      persistent_workers: true
+      pin_memory: true
+      seed: 42

@@ -1,0 +1,48 @@
+# @package _global_
+
+data:
+  type: BaseDataModule
+  params:
+    dataset_type: robocasa365
+    max_steps: ${trainer.max_steps}
+    train_datasets:
+      dataset_type: robocasa365
+      data_root: ${oc.env:ROBOCASA_TARGET_ROOT}
+      task_group: atomic
+      tasks:
+        - CloseBlenderLid
+        - CloseFridge
+        - CloseToasterOvenDoor
+        - CoffeeSetupMug
+        - NavigateKitchen
+        - OpenCabinet
+        - OpenDrawer
+        - OpenStandMixerHead
+        - PickPlaceCounterToCabinet
+        - PickPlaceCounterToStove
+        - PickPlaceDrawerToCounter
+        - PickPlaceSinkToCounter
+        - PickPlaceToasterToCounter
+        - SlideDishwasherRack
+        - TurnOffStove
+        - TurnOnElectricKettle
+        - TurnOnMicrowave
+        - TurnOnSinkFaucet
+      episode_ids_file: meta/target10.txt
+      processor_path: ${oc.env:MODEL_PATH}
+      robot_type: robocasa365
+      use_checkpoint_processor: true
+      prompt_mode: training
+      action_length: 16
+      obs_history: 4
+      obs_interval: 2
+      crop_ratio: 0.95
+      augment: true
+      strict: true
+      batch_size: 1
+      num_workers: 4
+      prefetch_factor: 2
+      persistent_workers: true
+      pin_memory: true
+      drop_last: true
+      seed: 42

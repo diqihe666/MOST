@@ -1,0 +1,74 @@
+# @package _global_
+
+model:
+  type: "BaseRunner"
+  params:
+    pretrained: ???
+    allowed_missing_pretrained_prefixes:
+      - "model.vlm.model.action_embed."
+      - "model.vlm.model.score_embed."
+      - "model.state_projector_choice."
+      - "model.action_projector_choice."
+      - "model.score_projector_choice."
+      - "model.memory_visual."
+      - "model.memory_encoder."
+    allowed_missing_pretrained_substrings:
+      - ".memory_cross_attn."
+      - ".memory_layernorm."
+      - ".memory_gate"
+    model:
+      type: "MOSTPolicy"
+      freq_coefficient: 1.0
+      freq_excluded_dims: [17, 18, 19]
+      ffn_gradient_checkpointing: true
+      async_train: true
+      vlm_config_path: ${oc.env:MOST_VLM_CONFIG_PATH}
+      local_files_only: true
+
+      # Formal MOST + Memory Expert MoT. Qwen keeps the original 4-frame
+      # pathway; a depth-aligned long-horizon expert emits one K/V cache per
+      # Action Expert layer.
+      memory_enabled: true
+      memory_interface: mot
+      memory_dim: 384
+      memory_layers: 36
+      memory_heads: 6
+      memory_action_heads: 8
+      memory_fusion_heads: 8
+      memory_block_size: 8
+      memory_future_steps: 16
+      memory_task_max_tokens: 128
+      memory_num_subtask_classes: 1024
+      memory_num_state_classes: 256
+      memory_num_object_categories: 256
+      memory_max_instance_slots: 32
+      memory_subtask_loss_weight: 0.25
+      memory_state_loss_weight: 0.25
+
+      memory_dino_repo: ${oc.env:MOST_MEM_DINO_REPO}
+      memory_dino_checkpoint: ${oc.env:MOST_MEM_DINO_CKPT}
+      memory_dino_model: dinov2_vits14
+      memory_dino_chunk_size: ${oc.env:DINO_CHUNK,512}
+      memory_dino_checkpointing: true
+      memory_freeze_dino: false
+      memory_gradient_checkpointing: true
+
+data:
+  params:
+    train_datasets:
+      memory_enabled: true
+      memory_stride: 16
+      memory_future_steps: 16
+      memory_task_max_tokens: 128
+      memory_image_size: 224
+      memory_num_subtask_classes: 1024
+      memory_num_state_classes: 256
+      memory_num_object_categories: 256
+      memory_max_instance_slots: 32
+      # The original MemLearn data path uses lightweight batched Decord reads.
+      prefetch_factor: 1
+
+trainer:
+  optimizer:
+    params:
+      memory_lr_scale: 1.0

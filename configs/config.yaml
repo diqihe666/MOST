@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - data: robocasa365_target10_composite_seen
+  - model: most
+  - trainer: deepspeed
