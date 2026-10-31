@@ -35,21 +35,12 @@ from robocasa.utils.prm_metrics import (  # noqa: E402
 
 
 DEFAULT_MODEL_PATH = ""
-ROBOT_TYPE = "robocasa365"
+ROBOT_TYPE = "robocasa_long_absrot"
 STATE_DIM = 60
 ACTION_DIM = 12
 ABSOLUTE_ROTVEC_REPRESENTATION = (
     "base_relative_eef_local_rotvec_radians_about_dataset_reference_from_state_t_plus_1"
 )
-ROTATION_EVAL_ARG_DEFAULTS = {
-    # Backward compatibility for scheduler manifests created before the
-    # absolute-rotation evaluator fields were added.  Such rollouts used the
-    # legacy public delta contract.
-    "rotation_action_mode": "delta",
-    "absolute_rotation_scale": 1.0,
-    "absolute_rotation_gain": 1.0,
-    "absolute_rotation_max_step_radians": 0.5,
-}
 # Training decodes RoboCasa365 at 20 FPS and samples every 2 frames, so
 # Qwen3-VL sees an effective 10 FPS clip. Keep evaluation timestamps identical.
 QWEN_VIDEO_FPS = 10.0
@@ -77,7 +68,7 @@ RAW_STATE_KEYS = (
 # Keep this canonical order fixed so task indices / episode seeds are stable
 # between single-task and whole-suite evaluation.
 ROBOCASA_LONG_TASKS = (
-    "PackTwoLunches",
+    "PackFruit",
     "PrepareBreakfast",
     "CleanAndStoreAfterMeal",
 )
@@ -85,7 +76,7 @@ ROBOCASA_LONG_TASKS = (
 # Match the scenes used to construct the current Long demonstrations.
 # A global --layout/--style pair can still override these for diagnostics.
 ROBOCASA_LONG_DEFAULT_SCENES = {
-    "PackTwoLunches": (7, 7),
+    "PackFruit": (7, 7),
     "PrepareBreakfast": (4, 4),
     "CleanAndStoreAfterMeal": (2, 2),
 }
@@ -367,15 +358,6 @@ def _local_model_config(model_path: str) -> tuple[dict[str, Any] | None, Path | 
     return payload, config_path
 
 
-def _normalize_rotation_action_mode(value: Any, *, source: str) -> str:
-    mode = str(value).strip().lower().replace("-", "_")
-    if mode in {"delta", "relative"}:
-        return "delta"
-    if mode in {"absolute", "abs", "abs_rotvec", "absolute_rotvec"}:
-        return "absolute_rotvec"
-    raise ValueError(f"Invalid rotation action mode {value!r} in {source}")
-
-
 def _validated_reference_quaternion(value: Any, *, source: str) -> np.ndarray:
     quaternion = np.asarray(value, dtype=np.float64)
     if quaternion.shape != (4,) or not np.all(np.isfinite(quaternion)):
@@ -402,28 +384,16 @@ def _validated_reference_quaternion(value: Any, *, source: str) -> np.ndarray:
 
 def validate_eval_model_contract(
     model_path: str,
-    requested_rotation_action_mode: str,
     requested_robot_type: str,
-) -> np.ndarray | None:
-    """Reject rotation/processor settings that disagree with exported metadata.
-
-    Generic public delta checkpoints predate this metadata and remain valid.
-    Absolute-rotation evaluation deliberately requires a local Long export so
-    forgetting the launcher switch or using the generic exporter cannot produce
-    a plausible-looking but invalid rollout.
-    """
-    requested_mode = _normalize_rotation_action_mode(
-        requested_rotation_action_mode, source="evaluation arguments"
-    )
+) -> np.ndarray:
+    """Validate the exported RoboCasa-Long action and processor contract."""
     payload, config_path = _local_model_config(model_path)
     if payload is None:
-        if requested_mode == "absolute_rotvec":
-            raise ValueError(
-                "absolute_rotvec evaluation requires a local exported model "
-                "directory whose config.json contains RoboCasa-Long rotation "
-                "metadata. Export with tools/export_hf_checkpoint_robocasa_long.py."
-            )
-        return None
+        raise ValueError(
+            "RoboCasa-Long evaluation requires a local exported model directory "
+            "whose config.json contains the Long action metadata. Export with "
+            "tools/export_hf_checkpoint_robocasa_long.py."
+        )
 
     assert config_path is not None
     mode_key = "robocasa_long_rotation_action_mode"
@@ -433,31 +403,11 @@ def validate_eval_model_contract(
     model_mode_raw = payload.get(mode_key)
     model_robot_raw = payload.get(robot_key)
     reference_raw = payload.get(reference_key)
-    has_long_metadata = any(
-        key in payload
-        for key in (mode_key, representation_key, robot_key, reference_key)
-    )
-
-    if not has_long_metadata:
-        if requested_mode == "absolute_rotvec":
-            raise ValueError(
-                f"{config_path} has no RoboCasa-Long absolute-rotation metadata. "
-                "This usually means the checkpoint was exported with the generic "
-                "exporter; use tools/export_hf_checkpoint_robocasa_long.py."
-            )
-        return None
-    if model_mode_raw is None:
+    if model_mode_raw != "absolute_rotvec":
         raise ValueError(
-            f"Incomplete Long metadata in {config_path}: missing {mode_key}"
-        )
-
-    model_mode = _normalize_rotation_action_mode(
-        model_mode_raw, source=str(config_path)
-    )
-    if requested_mode != model_mode:
-        raise ValueError(
-            "Evaluation rotation mode does not match the exported model: "
-            f"requested={requested_mode!r}, model={model_mode!r} ({config_path})."
+            f"Incomplete or unsupported Long metadata in {config_path}: "
+            f"{mode_key}={model_mode_raw!r}. Re-export with "
+            "tools/export_hf_checkpoint_robocasa_long.py."
         )
 
     if model_robot_raw is None or not str(model_robot_raw).strip():
@@ -472,30 +422,24 @@ def validate_eval_model_contract(
             f"({config_path})."
         )
 
-    if model_mode == "absolute_rotvec":
-        if payload.get(representation_key) != ABSOLUTE_ROTVEC_REPRESENTATION:
-            raise ValueError(
-                f"Incomplete or unsupported Long metadata in {config_path}: "
-                f"{representation_key}={payload.get(representation_key)!r}. "
-                "Re-export with tools/export_hf_checkpoint_robocasa_long.py."
-            )
-        processor_config = config_path.parent / "preprocessor_config.json"
-        if not processor_config.is_file():
-            raise ValueError(
-                "absolute_rotvec evaluation requires a complete local HF export; "
-                f"missing {processor_config}."
-            )
-        if reference_raw is None:
-            raise ValueError(
-                f"Incomplete Long metadata in {config_path}: missing {reference_key}. "
-                "Regenerate statistics and re-export the checkpoint."
-            )
-        return _validated_reference_quaternion(reference_raw, source=str(config_path))
-    if reference_raw is not None:
+    if payload.get(representation_key) != ABSOLUTE_ROTVEC_REPRESENTATION:
         raise ValueError(
-            f"Unexpected {reference_key} on a delta model in {config_path}"
+            f"Incomplete or unsupported Long metadata in {config_path}: "
+            f"{representation_key}={payload.get(representation_key)!r}. "
+            "Re-export with tools/export_hf_checkpoint_robocasa_long.py."
         )
-    return None
+    processor_config = config_path.parent / "preprocessor_config.json"
+    if not processor_config.is_file():
+        raise ValueError(
+            "RoboCasa-Long evaluation requires a complete local HF export; "
+            f"missing {processor_config}."
+        )
+    if reference_raw is None:
+        raise ValueError(
+            f"Incomplete Long metadata in {config_path}: missing {reference_key}. "
+            "Regenerate statistics and re-export the checkpoint."
+        )
+    return _validated_reference_quaternion(reference_raw, source=str(config_path))
 
 
 class EvalClient:
@@ -506,11 +450,9 @@ class EvalClient:
         port: int,
         robot_type: str,
         crop_ratio: float,
-        rotation_action_mode: str,
     ) -> None:
         self.rotation_reference_quaternion_xyzw = validate_eval_model_contract(
             model_path,
-            requested_rotation_action_mode=rotation_action_mode,
             requested_robot_type=robot_type,
         )
         (
@@ -885,13 +827,12 @@ def absolute_rotvec_to_controller_input(
 def policy_action_to_robosuite_action(
     policy_action: np.ndarray,
     *,
-    current_observation: dict[str, Any] | None = None,
-    arm_controller: Any | None = None,
-    rotation_action_mode: str = "delta",
+    current_observation: dict[str, Any],
+    arm_controller: Any,
+    absolute_rotation_reference_quaternion_xyzw: np.ndarray,
     absolute_rotation_scale: float = 1.0,
     absolute_rotation_gain: float = 1.0,
     absolute_rotation_max_step_radians: float = 0.5,
-    absolute_rotation_reference_quaternion_xyzw: np.ndarray | None = None,
 ) -> np.ndarray:
     """Convert MOST policy order into the direct PandaOmron 12D controller vector.
 
@@ -911,31 +852,18 @@ def policy_action_to_robosuite_action(
     env_action = action.copy()
     env_action[6] = -1.0 if float(action[6]) < 0.5 else 1.0
     env_action[11] = -1.0 if float(action[11]) < 0.5 else 1.0
-    if rotation_action_mode == "absolute_rotvec":
-        if current_observation is None or arm_controller is None:
-            raise ValueError(
-                "absolute_rotvec conversion requires the current observation "
-                "and live arm controller"
-            )
-        if absolute_rotation_reference_quaternion_xyzw is None:
-            raise ValueError(
-                "absolute_rotvec conversion requires the exported rotation "
-                "reference quaternion"
-            )
-        env_action[3:6] = absolute_rotvec_to_controller_input(
-            action[3:6],
-            current_observation,
-            arm_controller,
-            base_mode=bool(env_action[11] > 0),
-            rotation_reference_quaternion_xyzw=(
-                absolute_rotation_reference_quaternion_xyzw
-            ),
-            scale=absolute_rotation_scale,
-            gain=absolute_rotation_gain,
-            max_step_radians=absolute_rotation_max_step_radians,
-        )
-    elif rotation_action_mode != "delta":
-        raise ValueError(f"Unknown rotation_action_mode={rotation_action_mode!r}")
+    env_action[3:6] = absolute_rotvec_to_controller_input(
+        action[3:6],
+        current_observation,
+        arm_controller,
+        base_mode=bool(env_action[11] > 0),
+        rotation_reference_quaternion_xyzw=(
+            absolute_rotation_reference_quaternion_xyzw
+        ),
+        scale=absolute_rotation_scale,
+        gain=absolute_rotation_gain,
+        max_step_radians=absolute_rotation_max_step_radians,
+    )
     return env_action
 
 
@@ -1116,10 +1044,8 @@ def evaluate_task(
                 raise TypeError(
                     f"Direct RoboSuite reset() returned {type(raw_observation)}, expected dict"
                 )
-            arm_controller = None
-            if args.rotation_action_mode == "absolute_rotvec":
-                arm_controller = resolve_arm_rotation_controller(env)
-                initialize_absolute_rotation_controller(raw_observation, arm_controller)
+            arm_controller = resolve_arm_rotation_controller(env)
+            initialize_absolute_rotation_controller(raw_observation, arm_controller)
 
             instruction = extract_instruction(env)
             ep_meta = env.get_ep_meta() if hasattr(env, "get_ep_meta") else {}
@@ -1202,14 +1128,13 @@ def evaluate_task(
                     policy_action,
                     current_observation=raw_observation,
                     arm_controller=arm_controller,
-                    rotation_action_mode=args.rotation_action_mode,
+                    absolute_rotation_reference_quaternion_xyzw=(
+                        client.rotation_reference_quaternion_xyzw
+                    ),
                     absolute_rotation_scale=args.absolute_rotation_scale,
                     absolute_rotation_gain=args.absolute_rotation_gain,
                     absolute_rotation_max_step_radians=(
                         args.absolute_rotation_max_step_radians
-                    ),
-                    absolute_rotation_reference_quaternion_xyzw=(
-                        client.rotation_reference_quaternion_xyzw
                     ),
                 )
                 result = env.step(env_action)
@@ -1407,15 +1332,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--obs-history", type=int, default=4)
     parser.add_argument("--obs-interval", type=int, default=2)
     parser.add_argument(
-        "--rotation-action-mode",
-        choices=("delta", "absolute_rotvec"),
-        default="delta",
-        help=(
-            "Interpret policy rotation dims 3:6 as public delta controls or as "
-            "base-relative absolute EEF rotation vectors."
-        ),
-    )
-    parser.add_argument(
         "--absolute-rotation-scale",
         type=float,
         default=1.0,
@@ -1445,25 +1361,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def ensure_rotation_eval_arg_defaults(
-    args: argparse.Namespace,
-) -> argparse.Namespace:
-    """Upgrade an older dynamic-eval manifest in memory.
-
-    Dynamic evaluation stores ``vars(args)`` in ``manifest.json``.  Results
-    from queues created by an older evaluator remain valid, but their manifest
-    lacks the absolute-rotation fields now included in summaries.  Defaulting
-    those missing fields to the historical delta behavior lets merge resume
-    without rerunning completed rollouts.
-    """
-    for name, value in ROTATION_EVAL_ARG_DEFAULTS.items():
-        if not hasattr(args, name):
-            setattr(args, name, value)
-    return args
-
-
 def validate_args(args: argparse.Namespace) -> None:
-    ensure_rotation_eval_arg_defaults(args)
     if not str(args.model_path).strip():
         raise ValueError("--model-path is required")
     if args.max_tasks is not None and args.max_tasks < 1:
@@ -1500,12 +1398,9 @@ def validate_args(args: argparse.Namespace) -> None:
         )
     reference = validate_eval_model_contract(
         args.model_path,
-        requested_rotation_action_mode=args.rotation_action_mode,
         requested_robot_type=args.robot_type,
     )
-    args.rotation_reference_quaternion_xyzw = (
-        None if reference is None else reference.tolist()
-    )
+    args.rotation_reference_quaternion_xyzw = reference.tolist()
 
 
 def select_tasks(args: argparse.Namespace) -> tuple[dict[str, int], list[str]]:
@@ -1534,7 +1429,6 @@ def build_summary(
     args: argparse.Namespace,
     task_stats: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    ensure_rotation_eval_arg_defaults(args)
     num_episodes = sum(stats["num_episodes"] for stats in task_stats.values())
     successes = sum(stats["successes"] for stats in task_stats.values())
     success_rates = [stats["success_rate"] for stats in task_stats.values()]
@@ -1596,7 +1490,6 @@ def build_summary(
         "replan_steps": args.replan_steps,
         "obs_history": args.obs_history,
         "obs_interval": args.obs_interval,
-        "rotation_action_mode": args.rotation_action_mode,
         "absolute_rotation_scale": args.absolute_rotation_scale,
         "absolute_rotation_gain": args.absolute_rotation_gain,
         "absolute_rotation_max_step_radians": (args.absolute_rotation_max_step_radians),
@@ -1627,7 +1520,6 @@ def main() -> None:
         port=args.server_port,
         robot_type=args.robot_type,
         crop_ratio=args.crop_ratio,
-        rotation_action_mode=args.rotation_action_mode,
     )
     task_stats = {}
     try:

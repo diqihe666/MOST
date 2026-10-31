@@ -128,6 +128,9 @@ divide `BATCH_SIZE`; `2` is the recommended starting point. Samples in a local
 batch are grouped by episode and `frame_index % memory_stride` so their sparse
 memory histories can share decoding work.
 
+The launcher computes the task-specific action statistics required by the
+RoboCasa-Long policy and stores them with the run automatically.
+
 Training writes checkpoints, the resolved configuration, and logs to:
 
 ```text
@@ -143,25 +146,7 @@ RUN_NAME=most-long-packfruit-e2-20k \
 bash scripts/train_robocasa_long.sh
 ```
 
-### Absolute-rotation option
-
-The default action representation is `delta`. To train with the supported
-absolute rotation-vector representation:
-
-```bash
-LONG_ROTATION_ACTION_MODE=absolute_rotvec \
-RUN_NAME=most-long-packfruit-absrot-e2-20k \
-bash scripts/train_robocasa_long.sh
-```
-
-The launcher computes and stores the required rotation statistics in the run
-directory.
-
 ## 5. Export the trained checkpoint
-
-### Delta-action checkpoint
-
-For the default `delta` representation:
 
 ```bash
 conda activate most
@@ -170,28 +155,14 @@ export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
 CHECKPOINT="$PWD/outputs/most-long-packfruit-e2-20k/epoch=0-step=20000.ckpt"
 EXPORT_DIR="$PWD/exports/most-long-packfruit-e2-step20000"
 
-python tools/export_hf_checkpoint.py \
+python tools/export_hf_checkpoint_robocasa_long.py \
   --base-model "$MODEL_PATH" \
   --checkpoint "$CHECKPOINT" \
   --output-dir "$EXPORT_DIR"
 ```
 
-### Absolute-rotation checkpoint
-
-For a run trained with `LONG_ROTATION_ACTION_MODE=absolute_rotvec`:
-
-```bash
-export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
-CHECKPOINT="$PWD/outputs/most-long-packfruit-absrot-e2-20k/epoch=0-step=20000.ckpt"
-STATS="$PWD/outputs/most-long-packfruit-absrot-e2-20k/robocasa_long_absrot_stats.json"
-EXPORT_DIR="$PWD/exports/most-long-packfruit-absrot-e2-step20000"
-
-python tools/export_hf_checkpoint_robocasa_long.py \
-  --base-model "$MODEL_PATH" \
-  --checkpoint "$CHECKPOINT" \
-  --output-dir "$EXPORT_DIR" \
-  --stats "$STATS"
-```
+The Long exporter reads the action-statistics path from the saved training
+configuration and packages the matching processor entry into the export.
 
 Verify the exported model contract:
 
@@ -267,7 +238,7 @@ bash scripts/launch_robocasa_long.sh \
 ```
 
 Without `LONG_TASKS`, the launcher evaluates the default tasks:
-`PackTwoLunches`, `PrepareBreakfast`, and `CleanAndStoreAfterMeal`.
+`PackFruit`, `PrepareBreakfast`, and `CleanAndStoreAfterMeal`.
 
 The merged summary is written to:
 

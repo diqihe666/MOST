@@ -8,7 +8,6 @@ from scipy.spatial.transform import Rotation
 
 from most.data.datasets.robocasa_long_dataset import (
     absolute_rotation_targets,
-    normalize_rotation_action_mode,
     validate_rotation_reference_quaternion_xyzw,
 )
 
@@ -75,17 +74,9 @@ def test_rotation_reference_is_strictly_validated(reference: list[float]) -> Non
         validate_rotation_reference_quaternion_xyzw(reference)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [("delta", "delta"), ("relative", "delta"), ("abs", "absolute_rotvec")],
-)
-def test_rotation_action_mode_aliases(value: str, expected: str) -> None:
-    assert normalize_rotation_action_mode(value) == expected
-
-
 def _load_eval_entry():
     pytest.importorskip("robocasa")
-    path = Path(__file__).resolve().parents[2] / "eval_robocasa_long" / "entry.py"
+    path = Path(__file__).resolve().parents[1] / "eval_robocasa_long" / "entry.py"
     spec = importlib.util.spec_from_file_location("robocasa_long_eval_entry", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -139,19 +130,6 @@ def test_absolute_rotation_base_mode_uses_previous_desired_goal() -> None:
     np.testing.assert_allclose(command, [0.1, 0.0, 0.0], atol=1e-6)
 
 
-def test_delta_mode_remains_byte_for_byte_compatible() -> None:
-    entry = _load_eval_entry()
-    policy = np.asarray(
-        [0.1, 0.2, 0.3, -0.4, 0.5, -0.6, 0.2, 0.7, 0.8, 0.9, 1.0, 0.8],
-        dtype=np.float32,
-    )
-    actual = entry.policy_action_to_robosuite_action(policy)
-    expected = policy.copy()
-    expected[6] = -1.0
-    expected[11] = 1.0
-    np.testing.assert_array_equal(actual, expected)
-
-
 def test_absolute_rotation_is_offset_from_exported_reference() -> None:
     entry = _load_eval_entry()
     observation = {"robot0_base_to_eef_quat": np.asarray([0.0, 0.0, 0.0, 1.0])}
@@ -193,22 +171,14 @@ def _write_model_config(path: Path, payload: dict) -> Path:
     return path
 
 
-def test_eval_contract_rejects_forgotten_absolute_mode(tmp_path: Path) -> None:
+def test_eval_contract_rejects_generic_export(tmp_path: Path) -> None:
     entry = _load_eval_entry()
     model = _write_model_config(
         tmp_path / "model",
-        {
-            "robocasa_long_rotation_action_mode": "absolute_rotvec",
-            "robocasa_long_rotation_representation": (
-                "base_relative_eef_local_rotvec_radians_about_dataset_reference_"
-                "from_state_t_plus_1"
-            ),
-            "robocasa_long_robot_type": "robocasa_long_absrot",
-            "robocasa_long_rotation_reference_quaternion_xyzw": [0, 0, 0, 1],
-        },
+        {"memory_enabled": True},
     )
-    with pytest.raises(ValueError, match="does not match the exported model"):
-        entry.validate_eval_model_contract(str(model), "delta", "robocasa365")
+    with pytest.raises(ValueError, match="unsupported Long metadata"):
+        entry.validate_eval_model_contract(str(model), "robocasa_long_absrot")
 
 
 def test_eval_contract_requires_reference_metadata(tmp_path: Path) -> None:
@@ -225,9 +195,7 @@ def test_eval_contract_requires_reference_metadata(tmp_path: Path) -> None:
         },
     )
     with pytest.raises(ValueError, match="missing robocasa_long_rotation_reference"):
-        entry.validate_eval_model_contract(
-            str(model), "absolute_rotvec", "robocasa_long_absrot"
-        )
+        entry.validate_eval_model_contract(str(model), "robocasa_long_absrot")
 
 
 def test_exported_hf_directory_beats_parent_training_config(tmp_path: Path) -> None:

@@ -73,14 +73,6 @@ def patch_processor(
     robot_type_override: str | None,
 ) -> None:
     data_cfg, manifest_path = _training_data_config(output_dir)
-    mode = str(data_cfg.get("rotation_action_mode", "delta")).strip().lower()
-    mode = mode.replace("-", "_")
-    if mode not in {"absolute", "abs", "abs_rotvec", "absolute_rotvec"}:
-        raise ValueError(
-            "The checkpoint was not trained with rotation_action_mode="
-            f"absolute_rotvec (saved value: {mode!r})"
-        )
-
     if stats_path is None:
         raw_path = str(data_cfg.get("long_action_stats_path", "") or "").strip()
         if not raw_path or raw_path.lower() == "none":

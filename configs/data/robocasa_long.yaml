@@ -7,13 +7,10 @@ data:
     train_datasets:
       data_root: ${oc.env:ROBOCASA_TARGET_ROOT}
       long_tasks:
-        - PackTwoLunches
+        - PackFruit
         - PrepareBreakfast
         - CleanAndStoreAfterMeal
 
-      # delta preserves the RoboCasa365 action contract. absolute_rotvec uses
-      # a reference-centered absolute end-effector rotation for Long tasks.
-      rotation_action_mode: delta
       long_action_stats_path: null
       long_robot_type: robocasa_long_absrot
 

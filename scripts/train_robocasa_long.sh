@@ -10,9 +10,8 @@ cd "${REPO_ROOT}"
 
 MOST_PRETRAINED_CKPT="${MOST_PRETRAINED_CKPT:-${REPO_ROOT}/pretrained_ckpt/robocasa365/model_states.pt}"
 MOST_VLM_CONFIG_PATH="${MOST_VLM_CONFIG_PATH:-${REPO_ROOT}/pretrained_ckpt/robocasa365/vlm_config}"
-LONG_TASKS="${LONG_TASKS:-PackTwoLunches,PrepareBreakfast,CleanAndStoreAfterMeal}"
+LONG_TASKS="${LONG_TASKS:-PackFruit,PrepareBreakfast,CleanAndStoreAfterMeal}"
 LONG_EPISODES_PER_BATCH="${LONG_EPISODES_PER_BATCH:-2}"
-LONG_ROTATION_ACTION_MODE="${LONG_ROTATION_ACTION_MODE:-delta}"
 LONG_ACTION_STATS_PATH="${LONG_ACTION_STATS_PATH:-null}"
 LONG_MIN_ROTATION_STD="${LONG_MIN_ROTATION_STD:-0.05}"
 LONG_ROBOT_TYPE="${LONG_ROBOT_TYPE:-robocasa_long_absrot}"
@@ -26,20 +25,9 @@ GPU_COUNT="${GPU_COUNT:-8}"
 USE_WANDB="${USE_WANDB:-false}"
 WANDB_PROJECT="${WANDB_PROJECT:-most-robocasa-long}"
 MEMORY_GRAD_CKPT="${MEMORY_GRAD_CKPT:-true}"
-RUN_NAME="${RUN_NAME:-most-robocasa-long-${LONG_ROTATION_ACTION_MODE}-e${LONG_EPISODES_PER_BATCH}-s${MAX_STEPS}}"
+RUN_NAME="${RUN_NAME:-most-robocasa-long-e${LONG_EPISODES_PER_BATCH}-s${MAX_STEPS}}"
 RUN_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/outputs}/${RUN_NAME}"
 LOG_FILE="${LOG_ROOT:-${REPO_ROOT}/logs}/${RUN_NAME}.log"
-
-case "${LONG_ROTATION_ACTION_MODE,,}" in
-  delta|relative) LONG_ROTATION_ACTION_MODE="delta" ;;
-  absolute|abs|abs-rotvec|abs_rotvec|absolute-rotvec|absolute_rotvec)
-    LONG_ROTATION_ACTION_MODE="absolute_rotvec"
-    ;;
-  *)
-    echo "LONG_ROTATION_ACTION_MODE must be delta or absolute_rotvec" >&2
-    exit 2
-    ;;
-esac
 
 [[ "${LONG_EPISODES_PER_BATCH}" =~ ^[1-9][0-9]*$ ]] || {
   echo "LONG_EPISODES_PER_BATCH must be a positive integer" >&2
@@ -95,23 +83,21 @@ export MAX_LENGTH="${MAX_LENGTH:-20000}"
 export TOKENIZERS_PARALLELISM=false
 export ROBOCASA_LONG_SOURCE_FPS="${ROBOCASA_LONG_SOURCE_FPS:-20.0}"
 
-if [[ "${LONG_ROTATION_ACTION_MODE}" == "absolute_rotvec" ]]; then
-  if [[ -z "${LONG_ACTION_STATS_PATH}" || "${LONG_ACTION_STATS_PATH}" == "null" ]]; then
-    LONG_ACTION_STATS_PATH="${RUN_ROOT}/robocasa_long_absrot_stats.json"
-  fi
-  STATS_TASK_ARGS=()
-  for task in "${LONG_TASK_LIST[@]}"; do
-    STATS_TASK_ARGS+=(--task "${task}")
-  done
-  "${PYTHON:-python}" -u tools/compute_robocasa_long_absrot_stats.py \
-    --data-root "${ROBOCASA_TARGET_ROOT}" \
-    --base-model "${MODEL_PATH}" \
-    --base-robot-type robocasa365 \
-    --action-length 16 \
-    --min-rotation-std "${LONG_MIN_ROTATION_STD}" \
-    --output "${LONG_ACTION_STATS_PATH}" \
-    "${STATS_TASK_ARGS[@]}"
+if [[ -z "${LONG_ACTION_STATS_PATH}" || "${LONG_ACTION_STATS_PATH}" == "null" ]]; then
+  LONG_ACTION_STATS_PATH="${RUN_ROOT}/robocasa_long_absrot_stats.json"
 fi
+STATS_TASK_ARGS=()
+for task in "${LONG_TASK_LIST[@]}"; do
+  STATS_TASK_ARGS+=(--task "${task}")
+done
+"${PYTHON:-python}" -u tools/compute_robocasa_long_absrot_stats.py \
+  --data-root "${ROBOCASA_TARGET_ROOT}" \
+  --base-model "${MODEL_PATH}" \
+  --base-robot-type robocasa365 \
+  --action-length 16 \
+  --min-rotation-std "${LONG_MIN_ROTATION_STD}" \
+  --output "${LONG_ACTION_STATS_PATH}" \
+  "${STATS_TASK_ARGS[@]}"
 
 echo "Training MOST on pure RoboCasa-Long data: tasks=${LONG_TASKS_HYDRA}, run=${RUN_NAME}"
 
@@ -130,7 +116,6 @@ bash scripts/train.sh \
   "+trainer.use_wandb=${USE_WANDB}" \
   "data.params.train_datasets.long_tasks=[${LONG_TASKS_HYDRA}]" \
   "data.params.train_datasets.long_episodes_per_batch=${LONG_EPISODES_PER_BATCH}" \
-  "data.params.train_datasets.rotation_action_mode=${LONG_ROTATION_ACTION_MODE}" \
   "data.params.train_datasets.long_action_stats_path=${LONG_ACTION_STATS_PATH}" \
   "data.params.train_datasets.long_robot_type=${LONG_ROBOT_TYPE}" \
   "data.params.train_datasets.batch_size=${BATCH_SIZE}" \

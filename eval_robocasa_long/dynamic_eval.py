@@ -119,7 +119,6 @@ def run_worker(
         port=server_port,
         robot_type=args.robot_type,
         crop_ratio=args.crop_ratio,
-        rotation_action_mode=args.rotation_action_mode,
     )
     completed = 0
     failed_job = None

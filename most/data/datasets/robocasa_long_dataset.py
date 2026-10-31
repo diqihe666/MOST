@@ -1,19 +1,13 @@
 # Copyright (C) 2026 MOST Contributors.
-"""RoboCasa-Long-only action targets.
+"""RoboCasa-Long action targets.
 
 The public RoboCasa365 dataset remains the source of images, state, memory
-labels, and every non-rotation action dimension.  This subclass changes only
-the meaning of policy action dimensions ``3:6`` when explicitly requested:
-
-``delta``
-    Preserve the public RoboCasa365 rotation-delta target.
-
-``absolute_rotvec``
-    Predict the end-effector orientation relative to the robot base, encoded
-    as a three-dimensional local rotation vector around a fixed Long-dataset
-    reference orientation.  More precisely, the label is
-    ``log(R_goal @ R_reference.T)`` in radians.  ``action[t]`` is paired with
-    the achieved orientation in ``state[t + 1]``.
+labels, and every non-rotation action dimension. RoboCasa-Long predicts the
+end-effector orientation relative to the robot base, encoded as a
+three-dimensional local rotation vector around a fixed dataset reference
+orientation. More precisely, the label is ``log(R_goal @ R_reference.T)`` in
+radians. ``action[t]`` is paired with the achieved orientation in
+``state[t + 1]``.
 
 Keeping the representation three-dimensional preserves the original 12-D
 RoboCasa action layout.  A quaternion action would introduce a sign ambiguity
@@ -35,29 +29,9 @@ from most.data.datasets.robocasa365_dataset import (
 )
 
 
-ROTATION_ACTION_MODES = frozenset({"delta", "absolute_rotvec"})
 ABSOLUTE_ROTVEC_REPRESENTATION = (
     "base_relative_eef_local_rotvec_radians_about_dataset_reference_from_state_t_plus_1"
 )
-
-
-def normalize_rotation_action_mode(value: Any) -> str:
-    """Return the canonical Long rotation-action mode."""
-    mode = str(value or "delta").strip().lower().replace("-", "_")
-    aliases = {
-        "delta": "delta",
-        "relative": "delta",
-        "absolute": "absolute_rotvec",
-        "abs": "absolute_rotvec",
-        "abs_rotvec": "absolute_rotvec",
-        "absolute_rotvec": "absolute_rotvec",
-    }
-    try:
-        return aliases[mode]
-    except KeyError as exc:
-        raise ValueError(
-            f"rotation_action_mode must be delta or absolute_rotvec, got {value!r}"
-        ) from exc
 
 
 def validate_rotation_reference_quaternion_xyzw(
@@ -177,63 +151,47 @@ def absolute_rotation_targets(
 
 
 class RoboCasaLongDataset(RoboCasa365Dataset):
-    """Long-only wrapper with an optional absolute EEF orientation target."""
+    """Long-only wrapper with an absolute EEF orientation target."""
 
     def __init__(self, params: Any):
         data = params["train_datasets"]
         if str(data.get("task_group", "")) != "long":
             raise ValueError("RoboCasaLongDataset only supports task_group='long'")
-        self.rotation_action_mode = normalize_rotation_action_mode(
-            data.get("rotation_action_mode", "delta")
-        )
-        self.rotation_reference_quaternion_xyzw: np.ndarray | None = None
-        if self.rotation_action_mode == "absolute_rotvec":
-            raw_path = str(data.get("long_action_stats_path", "") or "").strip()
-            if not raw_path or raw_path.lower() == "none":
-                raise ValueError(
-                    "absolute_rotvec training requires long_action_stats_path"
-                )
-            stats_path = Path(raw_path).expanduser().resolve()
-            if not stats_path.is_file():
-                raise FileNotFoundError(
-                    f"RoboCasa-Long action statistics do not exist: {stats_path}"
-                )
-            payload = json.loads(stats_path.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict):
-                raise ValueError(
-                    f"Long action stats must be a JSON object: {stats_path}"
-                )
-            metadata = payload.get("metadata")
-            if not isinstance(metadata, dict):
-                raise ValueError(f"Missing metadata object in {stats_path}")
-            if metadata.get("rotation_action_mode") != "absolute_rotvec":
-                raise ValueError(
-                    f"{stats_path} is not an absolute_rotvec statistics file"
-                )
-            if metadata.get("representation") != ABSOLUTE_ROTVEC_REPRESENTATION:
-                raise ValueError(
-                    f"Unsupported rotation representation in {stats_path}: "
-                    f"{metadata.get('representation')!r}"
-                )
-            if "rotation_reference_quaternion_xyzw" not in metadata:
-                raise ValueError(
-                    f"Missing metadata.rotation_reference_quaternion_xyzw in "
-                    f"{stats_path}"
-                )
-            self.rotation_reference_quaternion_xyzw = (
-                validate_rotation_reference_quaternion_xyzw(
-                    metadata["rotation_reference_quaternion_xyzw"],
-                    source=str(stats_path),
-                )
+        raw_path = str(data.get("long_action_stats_path", "") or "").strip()
+        if not raw_path or raw_path.lower() == "none":
+            raise ValueError("RoboCasa-Long training requires long_action_stats_path")
+        stats_path = Path(raw_path).expanduser().resolve()
+        if not stats_path.is_file():
+            raise FileNotFoundError(
+                f"RoboCasa-Long action statistics do not exist: {stats_path}"
             )
+        payload = json.loads(stats_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"Long action stats must be a JSON object: {stats_path}")
+        metadata = payload.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ValueError(f"Missing metadata object in {stats_path}")
+        if metadata.get("rotation_action_mode") != "absolute_rotvec":
+            raise ValueError(f"Invalid RoboCasa-Long statistics file: {stats_path}")
+        if metadata.get("representation") != ABSOLUTE_ROTVEC_REPRESENTATION:
+            raise ValueError(
+                f"Unsupported rotation representation in {stats_path}: "
+                f"{metadata.get('representation')!r}"
+            )
+        if "rotation_reference_quaternion_xyzw" not in metadata:
+            raise ValueError(
+                f"Missing metadata.rotation_reference_quaternion_xyzw in {stats_path}"
+            )
+        self.rotation_reference_quaternion_xyzw = (
+            validate_rotation_reference_quaternion_xyzw(
+                metadata["rotation_reference_quaternion_xyzw"],
+                source=str(stats_path),
+            )
+        )
         super().__init__(params)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample = super().__getitem__(index)
-        sample["meta"]["rotation_action_mode"] = self.rotation_action_mode
-        if self.rotation_action_mode == "delta":
-            return sample
-
         raw_index = int(index) % self.raw_samples
         episode_position = bisect.bisect_right(self.cumulative_frames, raw_index)
         previous = (
@@ -244,10 +202,6 @@ class RoboCasaLongDataset(RoboCasa365Dataset):
         frame_index = raw_index - previous
         episode = self.episodes[episode_position]
         arrays = self._read_long_episode(str(episode.parquet_path))
-        if self.rotation_reference_quaternion_xyzw is None:
-            raise RuntimeError(
-                "absolute_rotvec reference quaternion is not initialized"
-            )
         target = absolute_rotation_targets(
             arrays.state,
             frame_index=frame_index,

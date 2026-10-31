@@ -15,7 +15,7 @@ shift $(( $# >= 3 ? 3 : $# ))
 if [[ -z "${NUM_PORTS}" || -z "${LOG_PATH}" || -z "${MODEL_PATH}" ]]; then
     echo "Usage: bash scripts/launch_robocasa_long.sh <num_ports> <log_path> [model_path]" >&2
     echo "       [extra evaluator args...]" >&2
-    echo "Example: bash scripts/launch_robocasa_long.sh 8 ./eval_results/robocasa365 /path/to/checkpoint" >&2
+    echo "Example: bash scripts/launch_robocasa_long.sh 8 ./eval_results/robocasa_long /path/to/checkpoint" >&2
     exit 1
 fi
 if ! [[ "${NUM_PORTS}" =~ ^[1-9][0-9]*$ ]]; then
@@ -42,7 +42,6 @@ NUM_TRIALS="${NUM_TRIALS:-30}"
 REPLAN_STEPS="${REPLAN_STEPS:-16}"
 OBS_HISTORY="${OBS_HISTORY:-4}"
 OBS_INTERVAL="${OBS_INTERVAL:-2}"
-LONG_ROTATION_ACTION_MODE="${LONG_ROTATION_ACTION_MODE:-delta}"
 ABSOLUTE_ROTATION_SCALE="${ABSOLUTE_ROTATION_SCALE:-1.0}"
 ABSOLUTE_ROTATION_GAIN="${ABSOLUTE_ROTATION_GAIN:-1.0}"
 ABSOLUTE_ROTATION_MAX_STEP_RADIANS="${ABSOLUTE_ROTATION_MAX_STEP_RADIANS:-0.5}"
@@ -55,22 +54,7 @@ CAMERA_WIDTH="${CAMERA_WIDTH:-256}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-256}"
 VIDEO_STRIDE="${VIDEO_STRIDE:-2}"
 VIDEO_FPS="${VIDEO_FPS:-10}"
-
-case "${LONG_ROTATION_ACTION_MODE,,}" in
-    delta|relative)
-        LONG_ROTATION_ACTION_MODE="delta"
-        DEFAULT_ROBOT_TYPE="robocasa365"
-        ;;
-    absolute|abs|abs-rotvec|abs_rotvec|absolute-rotvec|absolute_rotvec)
-        LONG_ROTATION_ACTION_MODE="absolute_rotvec"
-        DEFAULT_ROBOT_TYPE="robocasa_long_absrot"
-        ;;
-    *)
-        echo "LONG_ROTATION_ACTION_MODE must be delta or absolute_rotvec" >&2
-        exit 2
-        ;;
-esac
-ROBOT_TYPE="${ROBOT_TYPE:-${DEFAULT_ROBOT_TYPE}}"
+ROBOT_TYPE="${ROBOT_TYPE:-robocasa_long_absrot}"
 
 # Optional comma-separated task list shared with the Long training launcher.
 # When unset, evaluation uses the three default RoboCasa-Long tasks.
@@ -102,7 +86,6 @@ fi
     --replan-steps "${REPLAN_STEPS}" \
     --obs-history "${OBS_HISTORY}" \
     --obs-interval "${OBS_INTERVAL}" \
-    --rotation-action-mode "${LONG_ROTATION_ACTION_MODE}" \
     --absolute-rotation-scale "${ABSOLUTE_ROTATION_SCALE}" \
     --absolute-rotation-gain "${ABSOLUTE_ROTATION_GAIN}" \
     --absolute-rotation-max-step-radians "${ABSOLUTE_ROTATION_MAX_STEP_RADIANS}" \

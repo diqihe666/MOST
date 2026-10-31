@@ -12,7 +12,6 @@ import torch
 from most.data.collate.custom_collate import CustomCollate
 from most.data.datasets.robocasa_long_dataset import (
     ABSOLUTE_ROTVEC_REPRESENTATION,
-    normalize_rotation_action_mode,
     validate_rotation_reference_quaternion_xyzw,
 )
 
@@ -24,24 +23,21 @@ class RoboCasaLongCollate(CustomCollate):
     """Install Long absolute-rotation statistics without changing RoboCasa365.
 
     ``CustomCollate`` is first initialized with the public ``robocasa365``
-    processor entry.  In absolute mode this class then adds a new in-memory
-    robot type whose state/action mask contract is identical but whose action
-    mean/std were computed from the selected Long tasks.
+    processor entry. This class then adds a new in-memory robot type whose
+    state/action mask contract is identical but whose action mean/std were
+    computed from the selected Long tasks.
     """
 
     def __init__(self, params: Any | None = None) -> None:
         params = params or {}
         data = params.get("train_datasets", params)
-        mode = normalize_rotation_action_mode(data.get("rotation_action_mode", "delta"))
         base_robot_type = str(data.get("robot_type", "robocasa365"))
         super().__init__(params)
-        if mode == "delta":
-            return
 
         raw_path = str(data.get("long_action_stats_path", "") or "").strip()
         if not raw_path or raw_path.lower() == "none":
             raise ValueError(
-                "absolute_rotvec training requires long_action_stats_path; "
+                "RoboCasa-Long training requires long_action_stats_path; "
                 "train_robocasa_long.sh generates it automatically"
             )
         stats_path = Path(raw_path).expanduser().resolve()
@@ -56,7 +52,7 @@ class RoboCasaLongCollate(CustomCollate):
         if not isinstance(metadata, dict):
             raise ValueError(f"Missing metadata object in {stats_path}")
         if metadata.get("rotation_action_mode") != "absolute_rotvec":
-            raise ValueError(f"{stats_path} is not an absolute_rotvec statistics file")
+            raise ValueError(f"Invalid RoboCasa-Long statistics file: {stats_path}")
         if metadata.get("representation") != ABSOLUTE_ROTVEC_REPRESENTATION:
             raise ValueError(
                 f"Unsupported rotation representation in {stats_path}: "

@@ -26,7 +26,7 @@
 [![Project Page](https://img.shields.io/badge/Project-Page-1f6feb?logo=githubpages&logoColor=white)](https://most-vla.github.io/)
 [![Paper](https://img.shields.io/badge/Paper-Coming_Soon-b31b1b?logo=arxiv&logoColor=white)](./)
 [![Data](https://img.shields.io/badge/Data-RoboCasa--Long-ffcc4d?logo=huggingface&logoColor=black)](https://huggingface.co/datasets/diqihe666/robocasa_long)
-[![Code](https://img.shields.io/badge/Code-RoboCasa--Long_Simulator-181717?logo=github&logoColor=white)](https://github.com/diqihe666/RoboCasa-Long)
+[![Code](https://img.shields.io/badge/Code-MOST--VLA-181717?logo=github&logoColor=white)](https://github.com/diqihe666/MOST-vla)
 
 </div>
 
@@ -63,7 +63,7 @@ MOST is organized into two code repositories and one dataset release:
 
 | Component | Purpose | Link |
 | --- | --- | --- |
-| MOST policy code | Training, checkpoint export, deployment, and evaluation | This repository |
+| MOST policy code | Training, checkpoint export, deployment, and evaluation | [MOST-vla](https://github.com/diqihe666/MOST-vla) |
 | RoboCasa-Long simulator | Long-horizon task definitions and simulator environment construction | [RoboCasa-Long Simulator](https://github.com/diqihe666/RoboCasa-Long) |
 | RoboCasa-Long dataset | Demonstrations and memory annotations used by the Long benchmark | [Hugging Face Dataset](https://huggingface.co/datasets/diqihe666/robocasa_long) |
 
@@ -103,8 +103,8 @@ Create the environment used for training, checkpoint export, and model
 serving:
 
 ```bash
-git clone https://github.com/diqihe666/MOST.git
-cd MOST
+git clone https://github.com/diqihe666/MOST-vla.git
+cd MOST-vla
 
 conda create -n most python=3.12 -y
 conda activate most
@@ -228,14 +228,13 @@ Dataset-specific `ROBOCASA_TARGET_ROOT` instructions are provided in the
 [RoboCasa365 guide](docs/robocasa365/README.md) and
 [RoboCasa-Long guide](docs/robocasa_long/README.md).
 
-## Next steps
+## Training and Inference
 
-The common installation and XR-1 initialization are now complete. Continue
-with one benchmark guide; each guide contains its complete data download,
-training, checkpoint export, model-server, and evaluation workflow:
+Choose a benchmark guide below for its complete data download, training,
+checkpoint export, model-server, and inference workflow:
 
-- [RoboCasa365: Data, Training, and Evaluation](docs/robocasa365/README.md)
-- [RoboCasa-Long: Data, Training, and Evaluation](docs/robocasa_long/README.md)
+- [RoboCasa365: Data, Training, and Inference](docs/robocasa365/README.md)
+- [RoboCasa-Long: Data, Training, and Inference](docs/robocasa_long/README.md)
 
 ## To-Do List
 
@@ -246,7 +245,9 @@ training, checkpoint export, model-server, and evaluation workflow:
 
 ## Acknowledgements
 
-MOST is built upon several excellent open-source projects, including
+MOST is initialized from the official
+[Xiaomi-Robotics-1 (XR-1) RoboCasa365 checkpoint](https://huggingface.co/XiaomiRobotics/Xiaomi-Robotics-1-RoboCasa365).
+The project also builds upon several excellent open-source projects, including
 [RoboCasa](https://github.com/robocasa/robocasa),
 [robosuite](https://github.com/ARISE-Initiative/robosuite),
 [DINOv2](https://github.com/facebookresearch/dinov2), and
