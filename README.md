@@ -23,7 +23,7 @@
 
 <div align="center">
 
-[![Project Page](https://img.shields.io/badge/Project-Page-1f6feb?logo=githubpages&logoColor=white)](https://most-memory.github.io/)
+[![Project Page](https://img.shields.io/badge/Project-Page-1f6feb?logo=githubpages&logoColor=white)](https://most-vla.github.io/)
 [![Paper](https://img.shields.io/badge/Paper-Coming_Soon-b31b1b?logo=arxiv&logoColor=white)](./)
 [![Data](https://img.shields.io/badge/Data-RoboCasa--Long-ffcc4d?logo=huggingface&logoColor=black)](https://huggingface.co/datasets/diqihe666/robocasa_long)
 [![Code](https://img.shields.io/badge/Code-RoboCasa--Long_Simulator-181717?logo=github&logoColor=white)](https://github.com/diqihe666/RoboCasa-Long)
