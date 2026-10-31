@@ -11,23 +11,23 @@ Run every command from the root of the cloned MOST repository unless stated
 otherwise. RoboCasa-Long training uses only Long data and never constructs or
 reads a RoboCasa365 Composite dataset.
 
-## 1. Install the RoboCasa-Long simulator tasks
+## 1. Verify the RoboCasa-Long simulator
 
-The common RoboCasa and RoboSuite environment is created in the main README.
-Install the separate RoboCasa-Long task package into that environment:
+The common setup in the main README installs the complete
+[RoboCasa-Long simulator repository](https://github.com/diqihe666/Robocasa-Long)
+at `third_party/robocasa-long`. That repository contains the upstream
+RoboCasa365 environments together with the three Long tasks.
+
+Run its startup test before downloading data or starting a model server:
 
 ```bash
-cd /path/to/MOST
+cd /path/to/MOST-vla
 conda activate robocasa
-
-git clone https://github.com/diqihe666/RoboCasa-Long.git \
-  third_party/robocasa-long
-pip install -e third_party/robocasa-long
+python third_party/robocasa-long/tests/test_robocasa_long.py
 ```
 
-The package registers the Long task definitions used by the evaluation
-launcher. Keep the checkout at `third_party/robocasa-long` unless its own
-README instructs you to install additional assets at another location.
+The test creates and resets `PackFruit`, `PrepareBreakfast`, and
+`CleanAndStoreAfterMeal`. All three tasks should report `[PASS]`.
 
 ## 2. Download the RoboCasa-Long dataset
 
@@ -79,7 +79,7 @@ Activate the policy environment and verify the files prepared in the main
 README:
 
 ```bash
-cd /path/to/MOST
+cd /path/to/MOST-vla
 conda activate most
 
 export MODEL_PATH="$PWD/pretrained_ckpt/xr1-robocasa365-hf"
