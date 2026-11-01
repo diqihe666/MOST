@@ -13,7 +13,7 @@ otherwise.
 ## 1. Verify the common setup
 
 RoboCasa365 evaluation must use the
-[MOST RoboCasa environment](https://github.com/diqihe666/Robocasa-Long), not
+[MOST RoboCasa environment](https://github.com/diqihe666/MOST-RoboCasa), not
 an unmodified upstream RoboCasa installation. The fork supplies the semantic
 progress curves and long-horizon metrics consumed by the evaluator for all 32
 Composite Seen and Composite Unseen tasks.
@@ -26,10 +26,10 @@ cd /path/to/MOST-vla
 conda activate robocasa
 
 python -c "import robocasa; print(robocasa.__file__)"
-python third_party/robocasa-most/tests/test_gym_long_metrics.py
+python third_party/most-robocasa/tests/test_gym_long_metrics.py
 ```
 
-The package path must point into `third_party/robocasa-most/robocasa`, and the
+The package path must point into `third_party/most-robocasa/robocasa`, and the
 test must finish with `Passed: 35/35`. Resolve any other imported RoboCasa copy
 before running evaluation.
 

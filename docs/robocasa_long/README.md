@@ -14,8 +14,8 @@ reads a RoboCasa365 Composite dataset.
 ## 1. Verify the MOST RoboCasa environment
 
 The common setup in the main README installs the complete
-[MOST RoboCasa environment](https://github.com/diqihe666/Robocasa-Long) at
-`third_party/robocasa-most`. This fork is required for RoboCasa-Long: it
+[MOST RoboCasa environment](https://github.com/diqihe666/MOST-RoboCasa) at
+`third_party/most-robocasa`. This fork is required for RoboCasa-Long: it
 contains the three Long task definitions, their fixed scenes, semantic
 progress trackers, the shared metric utilities, and the Gym wrapper interface
 used by evaluation.
@@ -28,14 +28,14 @@ conda activate robocasa
 python -c "import robocasa; print(robocasa.__file__)"
 ```
 
-The printed path must point into `third_party/robocasa-most/robocasa`.
+The printed path must point into `third_party/most-robocasa/robocasa`.
 
 Run its startup test before downloading data or starting a model server:
 
 ```bash
 cd /path/to/MOST-vla
 conda activate robocasa
-python third_party/robocasa-most/tests/test_robocasa_long.py
+python third_party/most-robocasa/tests/test_robocasa_long.py
 ```
 
 The test creates and resets `PackFruit`, `PrepareBreakfast`, and
@@ -45,7 +45,7 @@ Also verify that the Gym wrapper returns `SR`, `OPS`, `UPS`, `NCT`, and the
 per-step progress curve used by the evaluator:
 
 ```bash
-python third_party/robocasa-most/tests/test_gym_long_metrics.py
+python third_party/most-robocasa/tests/test_gym_long_metrics.py
 ```
 
 This shared check covers the 32 instrumented RoboCasa365 tasks and the three
